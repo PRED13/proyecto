@@ -30,23 +30,28 @@ class DeleteNanRows(BaseEstimator, TransformerMixin):
 
 # --- CARGA DE DATOS (CORREGIDO PARA PRODUCCIÓN) ---
 def load_kdd_data():
-    # CORRECCIÓN: Usa la ruta dinámica del proyecto, no una de tu disco local
     path = os.path.join(settings.BASE_DIR, 'KDDTrain+.arff')
+    if not os.path.exists(path): return None
     
-    if not os.path.exists(path): 
-        print(f"Archivo no encontrado en: {path}")
-        return None
-        
+    # En lugar de arff.load(f), vamos a leer el archivo manualmente 
+    # y detenernos cuando tengamos suficientes datos
+    data = []
+    attributes = []
     with open(path, 'r') as f:
-        dataset = arff.load(f)
-    
-    attributes = [attr[0] for attr in dataset['attributes']]
-    df = pd.DataFrame(dataset['data'], columns=attributes)
-    
-    # CORRECCIÓN PARA PLAN FREE (512MB RAM): 
-    # Render Free matará el proceso si intentas procesar las 125,000 filas.
-    # Limitamos a 2500 para que las gráficas y tablas carguen sin error.
-    return df.head(2500)
+        reading_data = False
+        for line in f:
+            if line.lower().startswith('@attribute'):
+                attributes.append(line.split()[1].strip("'"))
+            elif line.lower().startswith('@data'):
+                reading_data = True
+                continue
+            elif reading_data:
+                if len(data) < 500: # SOLO 500 FILAS para el plan Free
+                    row = line.strip().split(',')
+                    if len(row) > 1: data.append(row)
+                else:
+                    break
+    return pd.DataFrame(data, columns=attributes)
 
 def get_base64_graph():
     buf = io.BytesIO()
